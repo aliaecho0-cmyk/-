@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>股票回测工具（增强版）</title>
+    <style>
+        /* 保持原有样式（省略重复注释） */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; background: #fafafa; color: #333; line-height: 1.6; padding: 40px 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        h1 { font-size: 24px; font-weight: 500; color: #1a1a1a; margin-bottom: 8px; letter-spacing: -0.5px; }
+        .subtitle { font-size: 13px; color: #888; margin-bottom: 40px; }
+        .section { background: #fff; border: 1px solid #e5e5e5; border-radius: 4px; padding: 24px; margin-bottom: 24px; }
+        .section-title { font-size: 13px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid #f0f0f0; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+        .form-group { display: flex; flex-direction: column; }
+        label { font-size: 12px; font-weight: 500; color: #666; margin-bottom: 6px; }
+        input[type="number"], input[type="date"], input[type="text"], select { height: 36px; padding: 0 12px; border: 1px solid #ddd; border-radius: 3px; font-size: 14px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; transition: border-color 0.2s; }
+        input:focus, select:focus { outline: none; border-color: #999; }
+        input::placeholder { color: #bbb; }
+        .full-width { grid-column: 1 / -1; }
+        .btn { height: 36px; padding: 0 24px; background: #1a1a1a; color: #fff; border: none; border-radius: 3px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #333; }
+        .file-upload { border: 2px dashed #ddd; border-radius: 4px; padding: 32px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+        .file-upload:hover { border-color: #999; background: #fafafa; }
+        .file-upload.dragover { border-color: #1a1a1a; background: #f5f5f5; }
+        .file-upload-icon { font-size: 32px; color: #ccc; margin-bottom: 12px; }
+        .file-upload-text { font-size: 13px; color: #666; margin-bottom: 4px; }
+        .file-upload-hint { font-size: 11px; color: #999; }
+        #fileInput { display: none; }
+        .file-info { margin-top: 16px; padding: 12px; background: #f8f8f8; border-radius: 3px; font-size: 12px; color: #666; }
+        .file-info strong { color: #333; }
+        .results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .result-card { padding: 16px; background: #fafafa; border: 1px solid #eee; border-radius: 3px; }
+        .result-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .result-value { font-size: 20px; font-weight: 600; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; color: #1a1a1a; }
+        .result-value.positive { color: #22a06b; }
+        .result-value.negative { color: #ca3521; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; padding: 10px 12px; background: #fafafa; border-bottom: 1px solid #e5e5e5; font-weight: 600; color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+        td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 12px; }
+        tr:hover { background: #fafafa; }
+        .buy { color: #22a06b; font-weight: 500; }
+        .sell { color: #ca3521; font-weight: 500; }
+        .hint { font-size: 11px; color: #999; margin-top: 4px; }
+        .empty-state { text-align: center; padding: 40px; color: #999; font-size: 13px; }
+        .table-container { max-height: 400px; overflow-y: auto; }
+        .table-container::-webkit-scrollbar { width: 6px; }
+        .table-container::-webkit-scrollbar-track { background: #f0f0f0; }
+        .table-container::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+        .data-preview { margin-top: 16px; }
+        .data-stats { display: flex; gap: 24px; margin-bottom: 16px; font-size: 12px; color: #666; }
+        .data-stats span { font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; }
+        /* 图表区域 */
+        #charts { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 16px; }
+        .chart-card { flex: 1 1 480px; background: #fff; border: 1px solid #eee; padding: 12px; border-radius: 6px; }
+    </style>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>股票回测工具（增强版）</h1>
+        <p class="subtitle">支持分仓（5份）、新增策略（Bollinger/KDJ/WR/DMI）、绘制资产/收益曲线</p>
+
+        <div class="section">
+            <div class="section-title">数据导入</div>
+            <div class="file-upload" id="dropZone">
+                <div class="file-upload-icon">📁</div>
+                <div class="file-upload-text">点击上传或拖拽 CSV 文件到此处</div>
+                <div class="file-upload-hint">格式: 日期, 股票代码, 开盘价, 收盘价, 最高价, 最低价, 成交量</div>
+                <input type="file" id="fileInput" accept=".csv">
+            </div>
+            <div id="fileInfo" class="file-info" style="display: none;"></div>
+            <div id="dataPreview" class="data-preview" style="display: none;">
+                <div class="data-stats" id="dataStats"></div>
+                <div class="table-container" style="max-height: 200px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>代码</th>
+                                <th>开盘</th>
+                                <th>收盘</th>
+                                <th>最高</th>
+                                <th>最低</th>
+                                <th>成交量</th>
+                            </tr>
+                        </thead>
+                        <tbody id="previewBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">参数设置</div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>初始资金</label>
+                    <input type="number" id="initialCapital" value="100000" step="1000">
+                </div>
+                <div class="form-group">
+                    <label>起始日期</label>
+                    <input type="date" id="startDate">
+                </div>
+                <div class="form-group">
+                    <label>终止日期</label>
+                    <input type="date" id="endDate">
+                </div>
+                <div class="form-group">
+                    <label>策略选择</label>
+                    <select id="strategySelect">
+                        <option value="custom">自定义表达式（原始）</option>
+                        <option value="ma5_20">5日均线上穿20日均线（MA5/MA20）</option>
+                        <option value="macd">MACD 金叉/死叉</option>
+                        <option value="rsi">RSI 超买超卖 (14)</option>
+                        <option value="macd_rsi">MACD + RSI 组合</option>
+                        <option value="bollinger_kdj">布林带超跌反弹（Bollinger + KDJ）</option>
+                        <option value="kdj_volume">KDJ 钝化+量能博弈</option>
+                        <option value="wr">威廉指标 WR（14）</option>
+                        <option value="dmi">DMI 趋势确认突破</option>
+                    </select>
+                </div>
+                <div class="form-group full-width" id="customConditions">
+                    <label>买入条件（自定义）</label>
+                    <input type="text" id="buyCondition" value="close > open" placeholder="例如: close > open">
+                    <span class="hint">可用变量: open, close, high, low, volume, ma5, ma20, macdLine, signalLine, rsi, k, d, j, bb_upper, bb_middle, bb_lower, wr, plusDI, minusDI, adx</span>
+                </div>
+                <div class="form-group full-width" id="customSell">
+                    <label>卖出条件（自定义）</label>
+                    <input type="text" id="sellCondition" value="close < open" placeholder="例如: close < open">
+                    <span class="hint">可用变量同上</span>
+                </div>
+                <div class="form-group" style="justify-content: flex-end;">
+                    <button class="btn" id="runBtn" onclick="runBacktest()" disabled>运行回测</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="section" id="resultsSection" style="display: none;">
+            <div class="section-title">回测结果</div>
+            <div class="results-grid">
+                <div class="result-card">
+                    <div class="result-label">最终资金</div>
+                    <div class="result-value" id="finalCapital">-</div>
+                </div>
+                <div class="result-card">
+                    <div class="result-label">总收益率</div>
+                    <div class="result-value" id="totalReturn">-</div>
+                </div>
+                <div class="result-card">
+                    <div class="result-label">交易次数</div>
+                    <div class="result-value" id="tradeCount">-</div>
+                </div>
+            </div>
+
+            <div id="charts">
+                <div class="chart-card">
+                    <div style="font-size:12px;color:#666;margin-bottom:6px;">总资产（现金 + 持仓市值）</div>
+                    <canvas id="assetChart" height="200"></canvas>
+                </div>
+                <div class="chart-card">
+                    <div style="font-size:12px;color:#666;margin-bottom:6px;">累计收益率（%）</div>
+                    <canvas id="returnChart" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="section" id="logSection" style="display: none;">
+            <div class="section-title">交易日志</div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>日期</th>
+                            <th>股票代码</th>
+                            <th>操作</th>
+                            <th>价格</th>
+                            <th>份数</th>
+                            <th>当次买入股数</th>
+                            <th>手续费</th>
+                            <th>资金余额</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradeLog"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+<script>
+    let stockData = [];
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo = document.getElementById('fileInfo');
+    const dataPreview = document.getElementById('dataPreview');
+    const runBtn = document.getElementById('runBtn');
+    const strategySelect = document.getElementById('strategySelect');
+    const customConditions = document.getElementById('customConditions');
+    const customSell = document.getElementById('customSell');
+
+    const FEE_RATE = 0.0001; // 万分之一
+    const UNIT_COUNT = 5; // 总资金分成 5 份
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
+    dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); const files = e.dataTransfer.files; if (files.length > 0) handleFile(files[0]); });
+    fileInput.addEventListener('change', (e) => { if (e.target.files.length > 0) handleFile(e.target.files[0]); });
+
+    strategySelect.addEventListener('change', () => {
+        const v = strategySelect.value;
+        if (v === 'custom') {
+            customConditions.style.display = 'block';
+            customSell.style.display = 'block';
+        } else {
+            customConditions.style.display = 'none';
+            customSell.style.display = 'none';
+        }
+    });
+
+    function handleFile(file) {
+        if (!file.name.endsWith('.csv')) { alert('请上传 CSV 格式文件'); return; }
+        const reader = new FileReader();
+        reader.onload = (e) => { const content = e.target.result; parseCSV(content, file.name); };
+        reader.readAsText(file);
+    }
+
+    function normalizeDate(dateStr) {
+        const parts = dateStr.split(/[\/\-]/);
+        if (parts.length === 3) {
+            const year = parts[0];
+            const month = parts[1].padStart(2, '0');
+            const day = parts[2].padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+        return dateStr;
+    }
+
+    function parseCSV(content, fileName) {
+        const lines = content.trim().split('\n');
+        stockData = [];
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim(); if (!line) continue;
+            let parts; if (line.includes('\t')) { parts = line.split('\t').map(p => p.trim()); } else { parts = line.split(',').map(p => p.trim()); }
+            if (parts.length >= 7) {
+                if (parts[0].includes('日期') || parts[0].toLowerCase().includes('date')) continue;
+                const date = normalizeDate(parts[0]);
+                const code = parts[1];
+                const open = parseFloat(parts[2]);
+                const close = parseFloat(parts[3]);
+                const high = parseFloat(parts[4]);
+                const low = parseFloat(parts[5]);
+                const volume = parseInt(parts[6]);
+                if (!isNaN(open) && !isNaN(close) && !isNaN(high) && !isNaN(low) && !isNaN(volume)) {
+                    stockData.push([date, code, open, close, high, low, volume]);
+                }
+            }
+        }
+        if (stockData.length === 0) { alert('CSV 文件格式错误或无有效数据'); return; }
+        fileInfo.innerHTML = `<strong>${fileName}</strong> - 共 ${stockData.length} 条数据`;
+        fileInfo.style.display = 'block';
+        const dates = stockData.map(d => d[0]).sort();
+        document.getElementById('startDate').value = dates[0];
+        document.getElementById('endDate').value = dates[dates.length - 1];
+        showDataPreview();
+        runBtn.disabled = false;
+    }
+
+    function showDataPreview() {
+        const codes = [...new Set(stockData.map(d => d[1]))];
+        const dates = stockData.map(d => d[0]).sort();
+        document.getElementById('dataStats').innerHTML = `
+            <span>数据条数: ${stockData.length}</span>
+            <span>股票数量: ${codes.length}</span>
+            <span>日期范围: ${dates[0]} ~ ${dates[dates.length - 1]}</span>
+        `;
+        const previewBody = document.getElementById('previewBody');
+        previewBody.innerHTML = '';
+        const previewData = stockData.slice(0, 5);
+        previewData.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${row[0]}</td>
+                <td>${row[1]}</td>
+                <td>${row[2].toFixed(2)}</td>
+                <td>${row[3].toFixed(2)}</td>
+                <td>${row[4].toFixed(2)}</td>
+                <td>${row[5].toFixed(2)}</td>
+                <td>${row[6]}</td>
+            `;
+            previewBody.appendChild(tr);
+        });
+        if (stockData.length > 5) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td colspan="7" style="text-align: center; color: #999;">... 还有 ${stockData.length - 5} 条数据 ...</td>`;
+            previewBody.appendChild(tr);
+        }
+        dataPreview.style.display = 'block';
+    }
+
+    function parseDataRows(data) {
+        return data.map(row => ({ date: row[0], code: row[1], open: row[2], close: row[3], high: row[4], low: row[5], volume: row[6] }));
+    }
+
+    // 指标计算（增加：bb, kdj, wr, dmi）
+    function computeIndicatorsForCode(list) {
+        // list 已按日期升序
+        // 计算 ma5, ma20
+        for (let i = 0; i < list.length; i++) {
+            const slice5 = list.slice(Math.max(0, i - 4), i + 1);
+            list[i].ma5 = slice5.length === 5 ? (slice5.reduce((s, d) => s + d.close, 0) / 5) : null;
+            const slice20 = list.slice(Math.max(0, i - 19), i + 1);
+            list[i].ma20 = slice20.length === 20 ? (slice20.reduce((s, d) => s + d.close, 0) / 20) : null;
+        }
+
+        // MACD：EMA12, EMA26, macdLine = EMA12-EMA26, signal = EMA9(macd)
+        const ema = (prices, period) => {
+            const res = [];
+            const alpha = 2 / (period + 1);
+            for (let i = 0; i < prices.length; i++) {
+                if (i === 0) res.push(prices[i]);
+                else res.push(alpha * prices[i] + (1 - alpha) * res[i - 1]);
+            }
+            return res;
+        };
+        const closes = list.map(d => d.close);
+        const ema12 = ema(closes, 12);
+        const ema26 = ema(closes, 26);
+        const macdLine = ema12.map((v, idx) => v - ema26[idx]);
+        const signal = ema(macdLine, 9);
+        for (let i = 0; i < list.length; i++) {
+            list[i].macdLine = isFinite(macdLine[i]) ? macdLine[i] : null;
+            list[i].signalLine = isFinite(signal[i]) ? signal[i] : null;
+        }
+
+        // RSI（14）使用 Wilder 平滑
+        const period = 14;
+        let gains = 0, losses = 0;
+        for (let i = 1; i < list.length; i++) {
+            const change = list[i].close - list[i - 1].close;
+            const gain = Math.max(0, change);
+            const loss = Math.max(0, -change);
+            if (i <= period) { gains += gain; losses += loss; if (i === period) {
+                    let avgGain = gains / period; let avgLoss = losses / period; let rs = avgLoss === 0 ? 100 : avgGain / avgLoss; list[i].rsi = 100 - (100 / (1 + rs));
+                } else { list[i].rsi = null; }
+            } else {
+                const prevAvgGain = list[i - 1].avgGain !== undefined ? list[i - 1].avgGain : (gains / period);
+                const prevAvgLoss = list[i - 1].avgLoss !== undefined ? list[i - 1].avgLoss : (losses / period);
+                const avgGain = (prevAvgGain * (period - 1) + gain) / period;
+                const avgLoss = (prevAvgLoss * (period - 1) + loss) / period;
+                list[i].avgGain = avgGain; list[i].avgLoss = avgLoss;
+                const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+                list[i].rsi = 100 - (100 / (1 + rs));
+            }
+        }
+
+        // Bollinger (20,2)
+        for (let i=0;i<list.length;i++){
+            const slice20 = list.slice(Math.max(0, i-19), i+1);
+            if (slice20.length===20){
+                const mean = slice20.reduce((s,d)=>s+d.close,0)/20;
+                const variance = slice20.reduce((s,d)=>s+Math.pow(d.close-mean,2),0)/20;
+                const sd = Math.sqrt(variance);
+                list[i].bb_middle = mean;
+                list[i].bb_upper = mean + 2*sd;
+                list[i].bb_lower = mean - 2*sd;
+                list[i].bb_dev = (list[i].close - mean) / sd; // 偏离度，供策略判断是否更远离
+            } else { list[i].bb_middle = list[i].bb_upper = list[i].bb_lower = list[i].bb_dev = null; }
+        }
+
+        // KDJ (9,3,3)
+        let K = 50, D = 50;
+        for (let i=0;i<list.length;i++){
+            const slice9 = list.slice(Math.max(0, i-8), i+1);
+            if (slice9.length===9){
+                const highest = Math.max(...slice9.map(d=>d.high));
+                const lowest = Math.min(...slice9.map(d=>d.low));
+                const rsv = highest===lowest ? 50 : ((list[i].close - lowest)/(highest-lowest))*100;
+                K = (2/3)*K + (1/3)*rsv;
+                D = (2/3)*D + (1/3)*K;
+                const J = 3*K - 2*D;
+                list[i].k = K;
+                list[i].d = D;
+                list[i].j = J;
+            } else {
+                list[i].k = list[i].d = list[i].j = null;
+            }
+        }
+
+        // WR (14)
+        for (let i=0;i<list.length;i++){
+            const slice14 = list.slice(Math.max(0,i-13), i+1);
+            if (slice14.length===14){
+                const highest = Math.max(...slice14.map(d=>d.high));
+                const lowest = Math.min(...slice14.map(d=>d.low));
+                list[i].wr = highest===lowest ? 0 : ((highest - list[i].close)/(highest - lowest)) * -100; // note: some define -100..0, here mapping to negative values
+                // ensure typical WR range (-100..0), we'll keep that
+            } else list[i].wr = null;
+        }
+
+        // DMI (ADX) 基于参数 (14,6) - 简化实现
+        // +DM, -DM, TR, then smooth
+        const periodDMI = 14;
+        const tr = []; const plusDM = []; const minusDM = [];
+        for (let i=0;i<list.length;i++){
+            if (i===0){ tr.push(list[i].high - list[i].low); plusDM.push(0); minusDM.push(0); continue; }
+            const upMove = list[i].high - list[i-1].high;
+            const downMove = list[i-1].low - list[i].low;
+            plusDM.push((upMove>downMove && upMove>0)? upMove:0);
+            minusDM.push((downMove>upMove && downMove>0)? downMove:0);
+            tr.push(Math.max(list[i].high - list[i].low, Math.abs(list[i].high - list[i-1].close), Math.abs(list[i].low - list[i-1].close)));
+        }
+        // Wilder 平滑
+        const smooth = (arr, p) => {
+            const res = [];
+            let sum = 0;
+            for (let i=0;i<arr.length;i++){
+                if (i<p){ sum += arr[i]; res.push(null); }
+                else if (i===p){ sum += arr[i]; res.push(sum); }
+                else { res.push(res[i-1] - (res[i-1]/p) + arr[i]); }
+            }
+            return res;
+        };
+        const atr = smooth(tr, periodDMI);
+        const smPlus = smooth(plusDM, periodDMI);
+        const smMinus = smooth(minusDM, periodDMI);
+        for (let i=0;i<list.length;i++){
+            if (atr[i] && atr[i] !== 0){
+                const plus = (smPlus[i]/atr[i]) * 100;
+                const minus = (smMinus[i]/atr[i]) * 100;
+                list[i].plusDI = plus;
+                list[i].minusDI = minus;
+            } else { list[i].plusDI = list[i].minusDI = null; }
+        }
+        // ADX: 平滑的 |plusDI - minusDI| / (plusDI+minusDI)
+        const dx = [];
+        for (let i=0;i<list.length;i++){
+            if (list[i].plusDI !== null && list[i].minusDI !== null){
+                const v = Math.abs(list[i].plusDI - list[i].minusDI) / (list[i].plusDI + list[i].minusDI) * 100;
+                dx.push(v);
+            } else dx.push(null);
+        }
+        const adxArr = smooth(dx.map(v=>v===null?0:v), periodDMI);
+        for (let i=0;i<list.length;i++){
+            list[i].adx = (adxArr[i] && adxArr[i] !== null) ? adxArr[i] : null;
+        }
+    }
+
+    function evaluateCustom(condition, data) {
+        const open = data.open; const close = data.close; const high = data.high; const low = data.low; const volume = data.volume;
+        const ma5 = data.ma5; const ma20 = data.ma20; const macdLine = data.macdLine; const signalLine = data.signalLine; const rsi = data.rsi;
+        const k = data.k; const d = data.d; const j = data.j;
+        const bb_upper = data.bb_upper; const bb_middle = data.bb_middle; const bb_lower = data.bb_lower; const wr = data.wr;
+        const plusDI = data.plusDI; const minusDI = data.minusDI; const adx = data.adx;
+        try { return eval(condition); } catch (e) { console.error('表达式错误:', e); return false; }
+    }
+
+    // 策略匹配——返回要买入的份数（正数）或卖出的份数（正数），对于买入：不会超过剩余份数；对于卖出：不会超过已持有份数
+    function strategyDecision(strategy, codeList, idx, state) {
+        // state: 持仓信息 {unitsHeld, unitRecords: [{shares,price,date,tag}], unitValue, cash}
+        const day = codeList[idx];
+        const prev = idx>0 ? codeList[idx-1] : null;
+        if (!day) return {buy:0, sell:0, reason: null};
+
+        // helper：剩余份数
+        const remainingUnits = UNIT_COUNT - state.unitsHeld;
+
+        if (strategy === 'custom') {
+            const buyCond = evaluateCustom(document.getElementById('buyCondition').value, day);
+            const sellCond = evaluateCustom(document.getElementById('sellCondition').value, day);
+            return { buy: buyCond ? 1 : 0, sell: sellCond ? state.unitsHeld : 0, reason: 'custom' };
+        }
+
+        if (strategy === 'ma5_20') {
+            if (!prev || day.ma5===null || day.ma20===null || prev.ma5===null || prev.ma20===null) return {buy:0, sell:0};
+            if ((prev.ma5 <= prev.ma20) && (day.ma5 > day.ma20)) return {buy:1, sell:0};
+            if ((prev.ma5 >= prev.ma20) && (day.ma5 < day.ma20)) return {buy:0, sell: state.unitsHeld};
+            return {buy:0, sell:0};
+        }
+
+        if (strategy === 'macd') {
+            if (!prev || day.macdLine===null || day.signalLine===null || prev.macdLine===null || prev.signalLine===null) return {buy:0, sell:0};
+            if ((prev.macdLine <= prev.signalLine) && (day.macdLine > day.signalLine)) return {buy:1, sell:0};
+            if ((prev.macdLine >= prev.signalLine) && (day.macdLine < day.signalLine)) return {buy:0, sell: state.unitsHeld};
+            return {buy:0, sell:0};
+        }
+
+        if (strategy === 'rsi') {
+            if (day.rsi===null) return {buy:0, sell:0};
+            if (day.rsi < 30) return {buy:1, sell:0};
+            if (day.rsi > 70) return {buy:0, sell: state.unitsHeld};
+            return {buy:0, sell:0};
+        }
+
+        if (strategy === 'macd_rsi') {
+            const macdBuy = strategyDecision('macd', codeList, idx, state).buy > 0;
+            const rsiBuy = day.rsi !== null && day.rsi < 40;
+            if (macdBuy && rsiBuy) return {buy:1, sell:0};
+            const macdSell = strategyDecision('macd', codeList, idx, state).sell > 0;
+            const rsiSell = day.rsi !== null && day.rsi > 60;
+            if (macdSell || rsiSell) return {buy:0, sell: state.unitsHeld};
+            return {buy:0, sell:0};
+        }
+
+        // 以下是新策略（更具体实现）
+        if (strategy === 'bollinger_kdj') {
+            // Buy when price < lower band AND J < -10
+            // If previous day also below lower band and today's bb_dev < prev.bb_dev (更远离下轨)，再买一份
+            let buyCount = 0;
+            if (day.bb_lower !== null && day.close < day.bb_lower && day.j !== null && day.j < -10) {
+                buyCount = 1;
+                if (prev && prev.bb_lower !== null && prev.close < prev.bb_lower && day.bb_dev !== null && prev.bb_dev !== null && day.bb_dev < prev.bb_dev) {
+                    buyCount = 2; // 当日一次性买 2 份（或者如果只剩 1 份则买 1 份）
+                }
+            }
+            // Sell: 当价触及或突破中轨且成交量未有效放大（今日量 <= prev量*1.2） => 卖出在下轨买入的份额（标记为 'bottom' 的份）
+            let sellCount = 0;
+            if (day.bb_middle !== null && day.close >= day.bb_middle && prev && (!day.volume || !prev.volume || day.volume <= prev.volume * 1.2)) {
+                // 卖出 unitRecords 中 tag==='bottom' 的份数
+                const bottomCount = state.unitRecords.filter(u=>u.tag==='bottom').length;
+                sellCount = bottomCount;
+            }
+            // 限制
+            buyCount = Math.max(0, Math.min(buyCount, remainingUnits));
+            sellCount = Math.max(0, Math.min(sellCount, state.unitsHeld));
+            return {buy: buyCount, sell: sellCount, reason: 'bollinger_kdj'};
+        }
+
+        if (strategy === 'kdj_volume') {
+            // 买点：K < 20 且最近 3 天 K 在低位走平或微微上升（std 小或递增），且过去 60 日最大量的三分之一作为萎缩阈值
+            let buyCount = 0;
+            const lookback = 60;
+            const start = Math.max(0, idx - lookback + 1);
+            const slice = codeList.slice(start, idx+1);
+            const maxVol = slice.reduce((s,d)=>Math.max(s,d.volume),0);
+            const volThreshold = maxVol / 3;
+            const last3 = codeList.slice(Math.max(0, idx-2), idx+1);
+            let kFlat = true;
+            if (last3.length === 3 && last3.every(x=>x.k!==null)) {
+                const diffs = [last3[1].k - last3[0].k, last3[2].k - last3[1].k];
+                // 微微向上或走平：差值非负或很小
+                kFlat = diffs.every(d=>d >= -2); // 容差
+            } else kFlat = false;
+            // 触发入场：K <20 且 kFlat 且 最近量 <= volThreshold，且出现放量阳线（当前量 > 前一日量*1.5 且 close>prev.close）
+            if (day.k !== null && day.k < 20 && kFlat) {
+                const recentVolSmall = maxVol > 0 ? (day.volume <= volThreshold) : false;
+                const volBreak = prev && day.volume > prev.volume * 1.5 && day.close > prev.close;
+                if (recentVolSmall && volBreak) {
+                    // 买 1-2 份
+                    buyCount = remainingUnits >= 2 ? 2 : (remainingUnits>=1?1:0);
+                }
+            }
+            // 卖点：K >=80 且 J 率先拐头向下 => 卖出全部
+            let sellCount = 0;
+            if (day.k !== null && day.k >= 80 && prev && prev.j !== null && day.j !== null && day.j < prev.j) {
+                sellCount = state.unitsHeld;
+            }
+            return {buy: buyCount, sell: sellCount, reason: 'kdj_volume'};
+        }
+
+        if (strategy === 'wr') {
+            // 我采取保守实现：WR 从 <= -80 上穿到 > -80 视为初次买点；若后来穿越 -20 则加仓
+            let buyCount = 0; let sellCount = 0;
+            if (prev && prev.wr !== null && day.wr !== null) {
+                if (prev.wr < -80 && day.wr >= -80) {
+                    buyCount = 1;
+                }
+                if (prev.wr < -20 && day.wr >= -20) {
+                    // 强势确认，尝试加 1-2 份
+                    buyCount = Math.min(remainingUnits, Math.max(buyCount, 2));
+                }
+                // 卖：WR 在高位缠绕后转向向下（today < prev and prev close to 0），或者 WR 从 >-20 向下跌破 -80（极端）
+                if (prev.wr > -20 && day.wr < -20 && day.wr < prev.wr) {
+                    sellCount = state.unitsHeld;
+                }
+            }
+            buyCount = Math.max(0, Math.min(buyCount, remainingUnits));
+            sellCount = Math.max(0, Math.min(sellCount, state.unitsHeld));
+            return {buy: buyCount, sell: sellCount, reason: 'wr'};
+        }
+
+        if (strategy === 'dmi') {
+            // +DI 上穿 -DI 且 ADX>25 并且 ADX 比昨日上升 => 买 1-2 份
+            let buyCount = 0; let sellCount = 0;
+            if (prev && day.plusDI !== null && day.minusDI !== null && day.adx !== null && prev.adx !== null) {
+                if (prev.plusDI <= prev.minusDI && day.plusDI > day.minusDI && day.adx > 25 && day.adx > prev.adx) {
+                    buyCount = remainingUnits >= 2 ? 2 : (remainingUnits>=1?1:0);
+                }
+                if (prev.minusDI <= prev.plusDI && day.minusDI > day.plusDI) {
+                    sellCount = state.unitsHeld;
+                }
+                if (day.adx > 50 && day.adx < prev.adx) {
+                    // ADX 高位拐头向下 => 卖
+                    sellCount = state.unitsHeld;
+                }
+            }
+            return {buy: buyCount, sell: sellCount, reason: 'dmi'};
+        }
+
+        return {buy:0, sell:0};
+    }
+
+    // 创建图表对象
+    let assetChart = null, returnChart = null;
+    function createCharts(dates, assets, returns) {
+        const ctxA = document.getElementById('assetChart').getContext('2d');
+        const ctxR = document.getElementById('returnChart').getContext('2d');
+        if (assetChart) assetChart.destroy();
+        if (returnChart) returnChart.destroy();
+        assetChart = new Chart(ctxA, {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [{ label: '总资产', data: assets, fill:false, tension:0.1 }]
+            },
+            options: { plugins:{legend:{display:false}}, scales:{x:{display:true}} }
+        });
+        returnChart = new Chart(ctxR, {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [{ label: '累计收益率(%)', data: returns, fill:false, tension:0.1 }]
+            },
+            options: { plugins:{legend:{display:false}}, scales:{x:{display:true}} }
+        });
+    }
+
+    function runBacktest() {
+        if (stockData.length === 0) { alert('请先导入数据'); return; }
+        const initialCapital = parseFloat(document.getElementById('initialCapital').value);
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        const buyCondition = document.getElementById('buyCondition').value;
+        const sellCondition = document.getElementById('sellCondition').value;
+        const strategy = strategySelect.value;
+
+        const parsed = parseDataRows(stockData);
+        const dataByCode = {};
+        parsed.forEach(d => { if (!dataByCode[d.code]) dataByCode[d.code] = []; dataByCode[d.code].push(d); });
+        Object.keys(dataByCode).forEach(code => dataByCode[code].sort((a,b) => a.date.localeCompare(b.date)));
+
+        // 计算各股票指标
+        for (const code in dataByCode) {
+            computeIndicatorsForCode(dataByCode[code]);
+        }
+
+        // 回测状态（保持单只持仓逻辑，但支持分仓）
+        let cash = initialCapital;
+        const unitValue = initialCapital / UNIT_COUNT;
+        let unitsHeld = 0;
+        let unitRecords = []; // 记录每份 {shares, price, date, tag}
+        let holdingCode = null;
+        let tradeCount = 0;
+        const tradeLog = [];
+
+        const allDates = [...new Set(parsed.map(d => d.date))].sort();
+        const filteredDates = allDates.filter(d => d >= startDate && d <= endDate);
+        if (filteredDates.length === 0) { alert('所选日期范围内无数据'); return; }
+
+        // 用于绘图：每个交易日记录资产
+        const assetDates = [];
+        const assetValues = [];
+        const returnValues = [];
+
+        for (let i = 0; i < filteredDates.length; i++) {
+            const currentDate = filteredDates[i];
+
+            // 先计算当日持仓市值（按持仓代码收盘价）
+            let marketValue = 0;
+            if (unitsHeld > 0 && holdingCode) {
+                const list = dataByCode[holdingCode];
+                const idx = list.findIndex(d => d.date === currentDate);
+                if (idx !== -1) {
+                    const price = list[idx].close;
+                    marketValue = unitRecords.reduce((s, u) => s + (u.shares * price), 0);
+                } else {
+                    // 若当前持仓代码在此日期无数据，则按最后可得价格估算
+                    const listAll = dataByCode[holdingCode];
+                    const last = listAll.find(d=>d.date<=currentDate);
+                    if (last) marketValue = unitRecords.reduce((s, u) => s + (u.shares * last.close), 0);
+                }
+            }
+
+            const totalAssetToday = cash + marketValue;
+            assetDates.push(currentDate);
+            assetValues.push(totalAssetToday);
+            returnValues.push(((totalAssetToday - initialCapital) / initialCapital * 100));
+
+            // 每日逻辑：如果无持仓（unitsHeld==0），遍历股票寻找买入信号
+            if (unitsHeld === 0) {
+                for (const code in dataByCode) {
+                    const codeList = dataByCode[code];
+                    const dayIndex = codeList.findIndex(d => d.date === currentDate);
+                    if (dayIndex === -1) continue;
+                    const day = codeList[dayIndex];
+                    const state = { unitsHeld, unitRecords, unitValue, cash };
+                    const decision = strategyDecision(strategy, codeList, dayIndex, state);
+                    if (decision.buy>0) {
+                        // 根据决定买入 N 份
+                        const toBuy = Math.min(decision.buy, UNIT_COUNT - unitsHeld);
+                        let boughtAny = false;
+                        for (let u=0;u<toBuy;u++){
+                            const price = day.close;
+                            const maxShares = Math.floor(unitValue / (price * (1 + FEE_RATE)));
+                            if (maxShares <= 0) break;
+                            const cost = maxShares * price;
+                            const fee = cost * FEE_RATE;
+                            if (cash >= cost + fee) {
+                                cash -= (cost + fee);
+                                unitRecords.push({shares: maxShares, price: price, date: day.date, tag: (decision.reason==='bollinger_kdj' && day.close < day.bb_lower ? 'bottom' : 'normal')});
+                                unitsHeld += 1;
+                                tradeCount++;
+                                tradeLog.push({ date: day.date, code: code, action: '买入', price: price, unitCount: 1, shares: maxShares, fee: fee, cash: cash });
+                                boughtAny = true;
+                                holdingCode = code;
+                            } else break;
+                        }
+                        if (boughtAny) break; // 遇到第一个买入信号就执行（保持原有逻辑）
+                    }
+                }
+            } else {
+                // 已有持仓：先查当前持仓代码是否有当日数据
+                const codeList = dataByCode[holdingCode];
+                const dayIndex = codeList.findIndex(d => d.date === currentDate);
+                if (dayIndex === -1) {
+                    // 无数据，跳过卖买判断，但仍记录资产
+                } else {
+                    const state = { unitsHeld, unitRecords, unitValue, cash };
+                    const decision = strategyDecision(strategy, codeList, dayIndex, state);
+                    // 先执行卖（优先卖出符合条件的份数）
+                    if (decision.sell > 0) {
+                        let sellCount = Math.min(decision.sell, unitsHeld);
+                        // 卖出 LIFO（先卖后买入的底部加仓更容易卖出），并优先卖 tag==='bottom' 如果 reason 是 bollinger_kdj
+                        const sellIndices = [];
+                        // 找 bottom first
+                        for (let i=unitRecords.length-1;i>=0 && sellCount>0;i--){
+                            if (unitRecords[i].tag === 'bottom') { sellIndices.push(i); sellCount--; }
+                        }
+                        // 若还需卖，再按后进先出卖
+                        for (let i=unitRecords.length-1;i>=0 && sellCount>0;i--){
+                            if (!sellIndices.includes(i)) { sellIndices.push(i); sellCount--; }
+                        }
+                        // 执行卖出
+                        for (const idx of sellIndices) {
+                            const rec = unitRecords[idx];
+                            const price = codeList[dayIndex].close;
+                            const revenue = rec.shares * price;
+                            const fee = revenue * FEE_RATE;
+                            cash = cash + revenue - fee;
+                            tradeCount++;
+                            tradeLog.push({ date: codeList[dayIndex].date, code: holdingCode, action: '卖出', price: price, unitCount: 1, shares: 0, fee: fee, cash: cash });
+                        }
+                        // 从 unitRecords 中移除已卖出的记录
+                        unitRecords = unitRecords.filter((_, idx) => !sellIndices.includes(idx));
+                        unitsHeld = unitRecords.length;
+                        if (unitsHeld === 0) holdingCode = null;
+                    }
+                    // 再尝试加仓（买）
+                    if (decision.buy > 0) {
+                        const toBuy = Math.min(decision.buy, UNIT_COUNT - unitsHeld);
+                        for (let u=0;u<toBuy;u++){
+                            const price = codeList[dayIndex].close;
+                            const maxShares = Math.floor(unitValue / (price * (1 + FEE_RATE)));
+                            if (maxShares <= 0) break;
+                            const cost = maxShares * price;
+                            const fee = cost * FEE_RATE;
+                            if (cash >= cost + fee) {
+                                cash -= (cost + fee);
+                                unitRecords.push({shares: maxShares, price: price, date: codeList[dayIndex].date, tag: (decision.reason==='bollinger_kdj' && codeList[dayIndex].close < codeList[dayIndex].bb_lower ? 'bottom' : 'normal')});
+                                unitsHeld += 1;
+                                tradeCount++;
+                                tradeLog.push({ date: codeList[dayIndex].date, code: holdingCode, action: '加仓', price: price, unitCount: 1, shares: maxShares, fee: fee, cash: cash });
+                            } else break;
+                        }
+                    }
+                }
+            }
+        } // 循环日期结束
+
+        // 回测结束：若仍有持仓则在最后可用日期按最后价格全部平仓
+        if (unitsHeld > 0 && holdingCode) {
+            const codeData = dataByCode[holdingCode];
+            const lastIdx = codeData.length - 1;
+            const lastDay = codeData[lastIdx];
+            if (lastDay) {
+                for (const rec of unitRecords) {
+                    const revenue = rec.shares * lastDay.close;
+                    const fee = revenue * FEE_RATE;
+                    cash = cash + revenue - fee;
+                    tradeCount++;
+                    tradeLog.push({ date: lastDay.date, code: holdingCode, action: '平仓', price: lastDay.close, unitCount: 1, shares: 0, fee: fee, cash: cash });
+                }
+                unitsHeld = 0;
+                unitRecords = [];
+                holdingCode = null;
+            }
+        }
+
+        const finalCapital = cash;
+        const totalReturn = ((finalCapital - initialCapital) / initialCapital * 100);
+
+        document.getElementById('finalCapital').textContent = '¥' + finalCapital.toFixed(2);
+        const returnElement = document.getElementById('totalReturn');
+        returnElement.textContent = totalReturn.toFixed(2) + '%';
+        returnElement.className = 'result-value ' + (totalReturn >= 0 ? 'positive' : 'negative');
+        document.getElementById('tradeCount').textContent = tradeCount;
+
+        const logBody = document.getElementById('tradeLog');
+        logBody.innerHTML = '';
+        if (tradeLog.length === 0) {
+            logBody.innerHTML = '<tr><td colspan="8" class="empty-state">无交易记录</td></tr>';
+        } else {
+            tradeLog.forEach(log => {
+                const row = document.createElement('tr');
+                const actionClass = (log.action === '卖出' || log.action === '平仓') ? 'sell' : 'buy';
+                row.innerHTML = `
+                    <td>${log.date}</td>
+                    <td>${log.code}</td>
+                    <td class="${actionClass}">${log.action}</td>
+                    <td>${log.price.toFixed(2)}</td>
+                    <td>${log.unitCount}</td>
+                    <td>${log.shares}</td>
+                    <td>¥${(log.fee || 0).toFixed(4)}</td>
+                    <td>¥${log.cash.toFixed(2)}</td>
+                `;
+                logBody.appendChild(row);
+            });
+        }
+        document.getElementById('resultsSection').style.display = 'block';
+        document.getElementById('logSection').style.display = 'block';
+
+        // 绘图数据：我们在循环内已经记录 assetDates / assetValues / returnValues
+        createCharts(assetDates, assetValues, returnValues);
+    }
+</script>
+</body>
+</html>
